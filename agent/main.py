@@ -100,6 +100,50 @@ def task_tool(task_description: str) -> str:
     return f"Task '{task_description}' will be executed by the subagent."
 
 
+# Create the Weather tool (backend tool)
+@tool
+def get_weather(location: str, unit: str = "celsius") -> str:
+    """
+    Get the current weather for a city.
+    
+    This tool fetches weather information from a weather API.
+    The execution happens on the backend server.
+
+    Args:
+        location: The city to get weather for
+        unit: Temperature unit (celsius or fahrenheit), defaults to celsius
+
+    Returns:
+        Weather information as JSON string
+    """
+    import random
+    
+    # Simulate API call delay
+    # In production, replace this with actual weather API call (e.g., OpenWeatherMap)
+    # Example: 
+    # import httpx
+    # async with httpx.AsyncClient() as client:
+    #     response = await client.get(f"https://api.openweathermap.org/data/2.5/weather?q={location}&appid={API_KEY}")
+    #     data = response.json()
+    
+    # For now, return mock weather data
+    temp = random.randint(10, 30)
+    conditions = ["sunny", "cloudy", "rainy", "partly cloudy", "overcast"]
+    condition = random.choice(conditions)
+    
+    weather_data = {
+        "location": location,
+        "temperature": temp,
+        "unit": unit,
+        "condition": condition,
+        "humidity": random.randint(40, 80),
+        "windSpeed": random.randint(5, 25),
+        "description": f"The weather in {location} is {condition} with a temperature of {temp}°{unit[0].upper()}."
+    }
+    
+    return json.dumps(weather_data, ensure_ascii=False)
+
+
 # Subagent node for executing tasks
 async def subagent_node(state: SubagentState) -> Dict[str, Any]:
     """Subagent that executes the task."""
@@ -157,8 +201,8 @@ async def agent_node(state: GraphState) -> Dict[str, Any]:
         streaming=True,
     )
 
-    # Bind the Task tool to the LLM
-    llm_with_tools = llm.bind_tools([task_tool])
+    # Bind tools to the LLM (both backend and frontend tools)
+    llm_with_tools = llm.bind_tools([task_tool, get_weather])
 
     # Check if OpenAI API key is set
     if os.getenv("OPENAI_API_KEY"):
@@ -228,6 +272,29 @@ async def tool_executor_node(state: GraphState) -> Dict[str, Any]:
                 name=tool_call["name"],
                 artifact={"subgraph_state": final_state}
             )
+            tool_messages.append(tool_message)
+        elif tool_call["name"] == "get_weather":
+            # Backend tool - execute the weather tool
+            location = tool_call["args"].get("location", "unknown")
+            unit = tool_call["args"].get("unit", "celsius")
+            
+            # Execute the tool function
+            try:
+                weather_result = get_weather.invoke({"location": location, "unit": unit})
+                tool_message = ToolMessage(
+                    content=weather_result,
+                    tool_call_id=tool_call["id"],
+                    name=tool_call["name"]
+                )
+            except Exception as e:
+                # Handle errors gracefully
+                error_message = f"Error fetching weather for {location}: {str(e)}"
+                tool_message = ToolMessage(
+                    content=error_message,
+                    tool_call_id=tool_call["id"],
+                    name=tool_call["name"]
+                )
+            
             tool_messages.append(tool_message)
         else:
             # Handle other tools if any

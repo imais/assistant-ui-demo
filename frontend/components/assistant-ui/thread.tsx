@@ -247,7 +247,9 @@ const AssistantMessage: FC = () => {
           <MessagePrimitive.Content
             components={{
               Text: MarkdownText,
-              tools: { Fallback: ToolFallback },
+              tools: {
+                Fallback: ToolFallback,
+              },
             }}
           />
           <MessageError />

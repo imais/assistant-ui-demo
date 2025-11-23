@@ -3,7 +3,6 @@
 import {
   AssistantRuntimeProvider,
   AssistantTransportConnectionMetadata,
-  makeAssistantTool,
   unstable_createMessageConverter as createMessageConverter,
   useAssistantTransportRuntime,
 } from "@assistant-ui/react";
@@ -12,50 +11,11 @@ import {
   LangChainMessage,
 } from "@assistant-ui/react-langgraph";
 import React, { ReactNode } from "react";
-import { z } from "zod";
 
-// Frontend tool with execute function
-const WeatherTool = makeAssistantTool({
-  type: "frontend",
-  toolName: "get_weather",
-  description: "Get the current weather for a city",
-  parameters: z.object({
-    location: z.string().describe("The city to get weather for"),
-    unit: z
-      .enum(["celsius", "fahrenheit"])
-      .optional()
-      .describe("Temperature unit"),
-  }),
-  execute: async ({ location, unit = "celsius" }) => {
-    console.log(`Getting weather for ${location} in ${unit}`);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    const temp = Math.floor(Math.random() * 30) + 10;
-    const conditions = ["sunny", "cloudy", "rainy", "partly cloudy"];
-    const condition = conditions[Math.floor(Math.random() * conditions.length)];
-
-    return {
-      location,
-      temperature: temp,
-      unit,
-      condition,
-      humidity: Math.floor(Math.random() * 40) + 40,
-      windSpeed: Math.floor(Math.random() * 20) + 5,
-    };
-  },
-  streamCall: async (reader) => {
-    console.log("streamCall", reader);
-    const city = await reader.args.get("location");
-    console.log("location", city);
-
-    const args = await reader.args.get();
-    console.log("args", args);
-
-    const result = await reader.response.get();
-    console.log("result", result);
-  },
-});
+// Note: WeatherTool is now executed on the backend.
+// The frontend only displays the result using WeatherToolCard component.
+// This frontend tool definition is kept for reference but not used.
+// const WeatherTool = makeAssistantTool({ ... });
 
 type MyRuntimeProviderProps = {
   children: ReactNode;
@@ -132,8 +92,6 @@ export function MyRuntimeProvider({ children }: MyRuntimeProviderProps) {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <WeatherTool />
-
       {children}
     </AssistantRuntimeProvider>
   );
