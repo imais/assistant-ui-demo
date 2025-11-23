@@ -13,7 +13,7 @@ import {
 import React, { ReactNode } from "react";
 
 // Note: WeatherTool is now executed on the backend.
-// The frontend only displays the result using WeatherToolCard component.
+// The frontend only displays the result using WeatherToolUI component.
 // This frontend tool definition is kept for reference but not used.
 // const WeatherTool = makeAssistantTool({ ... });
 

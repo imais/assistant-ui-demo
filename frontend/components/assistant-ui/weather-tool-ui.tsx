@@ -18,12 +18,12 @@ type WeatherToolResult = {
   description?: string;
 };
 
-export const WeatherToolCard = makeAssistantToolUI<
+export const WeatherToolUI = makeAssistantToolUI<
   WeatherToolArgs,
   string
 >({
   toolName: "get_weather",
-  render: function WeatherToolCard({ args, result }) {
+  render: function WeatherToolUI({ args, result }) {
     // Parse the result if it's a JSON string
     let weatherData: WeatherToolResult | undefined;
     
@@ -116,5 +116,4 @@ export const WeatherToolCard = makeAssistantToolUI<
     );
   },
 });
-
 
