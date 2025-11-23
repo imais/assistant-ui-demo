@@ -143,6 +143,50 @@ def get_weather(location: str, unit: str = "celsius") -> str:
     
     return json.dumps(weather_data, ensure_ascii=False)
 
+# Create the Search Products tool
+@tool
+def search_products(query: str) -> str:
+    """
+    Search for products in the database.
+    
+    This tool searches for products matching the given query string.
+    Use this tool when the user asks about products, wants to search for items,
+    or needs to find specific products in the catalog.
+    
+    Args:
+        query: The search query string to find products (e.g., product name, category, or keywords)
+    
+    Returns:
+        A JSON string containing product data with columns (id, name, price) and rows
+    """
+
+    # For now, return mock products data
+    products = [
+        {
+            "id": 1,
+            "name": "Product 1",
+            "price": 100
+        },
+        {
+            "id": 2,
+            "name": "Product 2",
+            "price": 200
+        },
+        {
+            "id": 3,
+            "name": "Product 3",
+            "price": 300
+        }
+    ]
+    # Convert products to a DataTable
+    data_table = {
+        "data": products,
+        "columns": ["id", "name", "price"],
+        "row_id_key": "id",
+        "description": "Products data table"
+    }
+    return json.dumps(data_table, ensure_ascii=False)
+
 
 # Subagent node for executing tasks
 async def subagent_node(state: SubagentState) -> Dict[str, Any]:
@@ -202,7 +246,7 @@ async def agent_node(state: GraphState) -> Dict[str, Any]:
     )
 
     # Bind tools to the LLM (both backend and frontend tools)
-    llm_with_tools = llm.bind_tools([task_tool, get_weather])
+    llm_with_tools = llm.bind_tools([task_tool, get_weather, search_products])
 
     # Check if OpenAI API key is set
     if os.getenv("OPENAI_API_KEY"):
@@ -295,6 +339,26 @@ async def tool_executor_node(state: GraphState) -> Dict[str, Any]:
                     name=tool_call["name"]
                 )
             
+            tool_messages.append(tool_message)
+        elif tool_call["name"] == "search_products":
+            # Frontend tool - execute the search products tool
+            query = tool_call["args"].get("query", "")
+            try:
+                search_products_result = search_products.invoke({"query": query})
+                tool_message = ToolMessage(
+                    content=search_products_result,
+                    tool_call_id=tool_call["id"],
+                    name=tool_call["name"]
+                )
+            except Exception as e:
+                # Handle errors gracefully
+                error_message = f"Error searching products for {query}: {str(e)}"
+                tool_message = ToolMessage(
+                    content=error_message,
+                    tool_call_id=tool_call["id"],
+                    name=tool_call["name"]
+                )
+
             tool_messages.append(tool_message)
         else:
             # Handle other tools if any
