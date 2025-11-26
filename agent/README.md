@@ -11,27 +11,9 @@ This is a LangGraph-based implementation of the assistant transport backend, pro
 
 ## Installation
 
-### Using uv (Recommended)
-
-1. Initialize and install dependencies:
+1. Install dependencies using uv:
 ```bash
-uv init --name assistant-transport-backend-langgraph --package
-uv add fastapi uvicorn[standard] assistant-stream pydantic python-dotenv langgraph langchain langchain-core langchain-openai httpx
-# Or simply:
 uv sync
-```
-
-2. Set up environment variables:
-```bash
-cp .env.example .env
-# Edit .env to add your OpenAI API key
-```
-
-### Using pip
-
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
 ```
 
 2. Set up environment variables:
@@ -45,7 +27,7 @@ cp .env.example .env
 The server can be configured via environment variables:
 
 - `HOST`: Server host (default: 0.0.0.0)
-- `PORT`: Server port (default: 8001)
+- `PORT`: Server port (default: 8010)
 - `DEBUG`: Enable debug mode (default: false)
 - `LOG_LEVEL`: Log level (default: info)
 - `CORS_ORIGINS`: CORS origins (default: http://localhost:3000)
@@ -53,29 +35,18 @@ The server can be configured via environment variables:
 
 ## Running the Server
 
-### Using uv
 ```bash
 uv run python main.py
 ```
 
 Or with uvicorn directly:
 ```bash
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8001
-```
-
-### Using standard Python
-```bash
-python main.py
-```
-
-Or with uvicorn directly:
-```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8001
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8010
 ```
 
 ## API Endpoints
 
-### POST /api/chat
+### POST /assistant
 Main chat endpoint that processes commands and streams responses using LangGraph.
 
 Request body:
@@ -105,7 +76,7 @@ Health check endpoint.
 
 ## How It Works
 
-1. The server receives chat requests at `/api/chat`
+1. The server receives chat requests at `/assistant`
 2. Commands are converted to LangGraph messages (HumanMessage, AIMessage, etc.)
 3. The LangGraph processes the messages through its nodes
 4. Two streaming tasks run concurrently:
@@ -120,7 +91,7 @@ This backend is designed to work with the assistant-ui frontend. Update your fro
 
 ```typescript
 const runtime = useExternalStoreRuntime({
-  endpoint: "http://localhost:8001/api/chat"
+  endpoint: "http://localhost:8001/assistant"
 });
 ```
 
