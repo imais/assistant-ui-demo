@@ -5,10 +5,19 @@ Assistant Transport Backend with LangGraph - FastAPI + assistant-stream + LangGr
 
 import os
 import asyncio
+import logging
 from typing import Dict, Any, List, Optional, Union, Sequence, Annotated
 from contextlib import asynccontextmanager
 import uvicorn
 import json
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -187,12 +196,67 @@ def search_products(query: str) -> str:
     }
     return json.dumps(data_table, ensure_ascii=False)
 
+# Create graph display tool
+@tool
+def display_graph(plot_type: str) -> str: 
+    """
+    Display a graph in a user-friendly way.
+    
+    This tool displays a graph in a user-friendly way. 
+    Use this tool when the user asks about a graph, wants to see a graph, or needs to display a graph.
+    
+    IMPORTANT: After calling this tool, the graph is automatically displayed in the UI component.
+    DO NOT repeat, explain, or output the tool's result in your response.
+    DO NOT format tool results as Markdown images (e.g., ![title](data:image/...)).
+    DO NOT output JSON data, base64 data, or any raw tool result data.
+    Simply acknowledge that the graph has been displayed.
+    
+    Args:
+        plot_type: The type of plot to display (e.g., "bar", "line", "pie")
+    """
+    if plot_type == "bar":
+        # Bar chart dummy data
+        dummy_data = {
+            "labels": ["Q1", "Q2", "Q3", "Q4"],
+            "values": [120, 150, 180, 200],
+            "title": "Quarterly Sales",
+            "xlabel": "Quarter",
+            "ylabel": "Sales (thousands)"
+        }
+        return json.dumps(dummy_data, ensure_ascii=False)
+    
+    elif plot_type == "line":
+        # Line chart dummy data
+        dummy_data = {
+            "labels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+            "values": [45, 52, 48, 61, 55, 67],
+            "title": "Monthly Revenue Trend",
+            "xlabel": "Month",
+            "ylabel": "Revenue (thousands)"
+        }
+        return json.dumps(dummy_data, ensure_ascii=False)
+    
+    elif plot_type == "pie":
+        # Pie chart dummy data
+        dummy_data = {
+            "labels": ["Product A", "Product B", "Product C", "Product D"],
+            "values": [30, 25, 20, 25],
+            "title": "Product Sales Distribution"
+        }
+        return json.dumps(dummy_data, ensure_ascii=False)
+    
+    else:
+        # Default: return empty data for unsupported plot types
+        return json.dumps({"error": f"Unsupported plot type: {plot_type}"}, ensure_ascii=False)
+
 
 # Subagent node for executing tasks
 async def subagent_node(state: SubagentState) -> Dict[str, Any]:
     """Subagent that executes the task."""
+    logger.info("🟢 [SUBGRAPH NODE] START: execute_task")
     messages = state.get("messages", [])
     task = state.get("task", "")
+    logger.info(f"📝 [SUBGRAPH] Task: {task}")
 
     # Initialize a simpler LLM for the subagent
     llm = ChatOpenAI(
@@ -214,6 +278,7 @@ async def subagent_node(state: SubagentState) -> Dict[str, Any]:
     else:
         result = f"Mock subagent result for task: {task}"
 
+    logger.info("🔴 [SUBGRAPH NODE] END: execute_task")
     return {
         "messages": [AIMessage(content=result)],
         "result": result
@@ -236,7 +301,18 @@ def create_subagent_graph() -> CompiledStateGraph:
 
 async def agent_node(state: GraphState) -> Dict[str, Any]:
     """Main agent node that can call tools."""
+    logger.info("🟢 [LANGGRAPH NODE] START: agent")
     messages = state.get("messages", [])
+    
+    # Add system message to prevent LLM from repeating tool results
+    system_message = SystemMessage(
+        content="When you call a tool and receive a result, the result is automatically displayed in the UI. "
+                "DO NOT repeat, explain, or output the tool's result data in your response. "
+                "DO NOT output JSON data, base64-encoded data, or raw tool results. "
+                "DO NOT format tool results as Markdown images (e.g., ![title](data:image/...)) or code blocks. "
+                "Simply acknowledge that the requested action has been completed. "
+                "For display_graph tool: The graph is already displayed in the UI component, so just confirm it was displayed."
+    )
 
     # Initialize the LLM with tool binding
     llm = ChatOpenAI(
@@ -246,14 +322,21 @@ async def agent_node(state: GraphState) -> Dict[str, Any]:
     )
 
     # Bind tools to the LLM (both backend and frontend tools)
-    llm_with_tools = llm.bind_tools([task_tool, get_weather, search_products])
+    llm_with_tools = llm.bind_tools([task_tool, get_weather, search_products, display_graph])
+
+    # Prepare messages with system message at the beginning (only if not already present)
+    messages_list = list(messages)
+    if not any(isinstance(msg, SystemMessage) for msg in messages_list):
+        messages_with_system = [system_message] + messages_list
+    else:
+        messages_with_system = messages_list
 
     # Check if OpenAI API key is set
     if os.getenv("OPENAI_API_KEY"):
-        response = await llm_with_tools.ainvoke(messages)
+        response = await llm_with_tools.ainvoke(messages_with_system)
     else:
         # Mock response with a tool call for testing
-        print("⚠️ No OpenAI API key found - using mock response with tool call")
+        logger.debug("⚠️ No OpenAI API key found - using mock response with tool call")
         response = AIMessage(
             content="I'll help you with that task.",
             tool_calls=[{
@@ -263,6 +346,7 @@ async def agent_node(state: GraphState) -> Dict[str, Any]:
             }]
         )
 
+    logger.info("🔴 [LANGGRAPH NODE] END: agent")
     return {"messages": [response]}
 
 
@@ -270,6 +354,7 @@ def should_call_tools(state: GraphState) -> str:
     """Determine if tools should be called."""
     messages = state.get("messages", [])
     if not messages:
+        logger.info("🔴 [LANGGRAPH NODE] END: Graph execution ended (no messages)")
         return "end"
 
     last_message = messages[-1]
@@ -277,25 +362,36 @@ def should_call_tools(state: GraphState) -> str:
     if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
         return "tools"
 
+    logger.info("🔴 [LANGGRAPH NODE] END: Graph execution ended (no tool calls)")
     return "end"
 
 
 async def tool_executor_node(state: GraphState) -> Dict[str, Any]:
     """Execute tool calls, including Task tool which spawns subagents."""
+    logger.info("🟢 [LANGGRAPH NODE] START: tools")
     messages = state.get("messages", [])
     if not messages:
+        logger.info("🔴 [LANGGRAPH NODE] END: tools (no messages)")
         return {"messages": []}
 
     last_message = messages[-1]
     if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
+        logger.info("🔴 [LANGGRAPH NODE] END: tools (no tool calls)")
         return {"messages": []}
-
+    
+    logger.info(f"🔨 [TOOL EXECUTOR] Processing {len(last_message.tool_calls)} tool call(s)")
+    
     # Process each tool call
     tool_messages = []
     for tool_call in last_message.tool_calls:
+        tool_name = tool_call.get("name", "unknown")
+        tool_args = tool_call.get("args", {})
+        logger.info(f"🔧 [TOOL CALL] Tool: {tool_name}, Args: {tool_args}")
+        
         if tool_call["name"] == "task_tool":
             # Extract task description
             task_description = tool_call["args"].get("task_description", "")
+            logger.info(f"📋 [TASK TOOL] Executing task: {task_description}")
 
             # Create and run the subagent graph
 
@@ -307,7 +403,9 @@ async def tool_executor_node(state: GraphState) -> Dict[str, Any]:
             }
 
             # Run the subagent
+            logger.info(f"🤖 [TASK TOOL] Spawning subagent for task...")
             final_state = await subagent_graph.ainvoke(subagent_state)
+            logger.info(f"✅ [TASK TOOL] Subagent completed task")
 
             # Create tool message with the result
             tool_message = ToolMessage(
@@ -321,10 +419,12 @@ async def tool_executor_node(state: GraphState) -> Dict[str, Any]:
             # Backend tool - execute the weather tool
             location = tool_call["args"].get("location", "unknown")
             unit = tool_call["args"].get("unit", "celsius")
+            logger.info(f"🌤️  [WEATHER] Fetching weather for {location} ({unit})")
             
             # Execute the tool function
             try:
                 weather_result = get_weather.invoke({"location": location, "unit": unit})
+                logger.info(f"✅ [WEATHER] Successfully fetched weather for {location}")
                 tool_message = ToolMessage(
                     content=weather_result,
                     tool_call_id=tool_call["id"],
@@ -333,6 +433,7 @@ async def tool_executor_node(state: GraphState) -> Dict[str, Any]:
             except Exception as e:
                 # Handle errors gracefully
                 error_message = f"Error fetching weather for {location}: {str(e)}"
+                logger.error(f"❌ [WEATHER] Error: {error_message}")
                 tool_message = ToolMessage(
                     content=error_message,
                     tool_call_id=tool_call["id"],
@@ -343,8 +444,10 @@ async def tool_executor_node(state: GraphState) -> Dict[str, Any]:
         elif tool_call["name"] == "search_products":
             # Frontend tool - execute the search products tool
             query = tool_call["args"].get("query", "")
+            logger.info(f"📦 [SEARCH PRODUCTS] Searching for: {query}")
             try:
                 search_products_result = search_products.invoke({"query": query})
+                logger.info(f"✅ [SEARCH PRODUCTS] Found products for query: {query}")
                 tool_message = ToolMessage(
                     content=search_products_result,
                     tool_call_id=tool_call["id"],
@@ -353,6 +456,7 @@ async def tool_executor_node(state: GraphState) -> Dict[str, Any]:
             except Exception as e:
                 # Handle errors gracefully
                 error_message = f"Error searching products for {query}: {str(e)}"
+                logger.error(f"❌ [SEARCH PRODUCTS] Error: {error_message}")
                 tool_message = ToolMessage(
                     content=error_message,
                     tool_call_id=tool_call["id"],
@@ -360,8 +464,32 @@ async def tool_executor_node(state: GraphState) -> Dict[str, Any]:
                 )
 
             tool_messages.append(tool_message)
+        elif tool_call["name"] == "display_graph":
+            # Backend tool - execute the display graph tool
+            plot_type = tool_call["args"].get("plot_type", "bar")
+            logger.info(f"📊 [DISPLAY GRAPH] Plot type: {plot_type}")
+            try:
+                graph_result = display_graph.invoke({"plot_type": plot_type})
+                logger.info(f"✅ [DISPLAY GRAPH] Successfully generated {plot_type} chart")
+                tool_message = ToolMessage(
+                    content=graph_result,
+                    tool_call_id=tool_call["id"],
+                    name=tool_call["name"]
+                )
+            except Exception as e:
+                # Handle errors gracefully
+                error_message = f"Error displaying graph with plot_type {plot_type}: {str(e)}"
+                logger.error(f"❌ [DISPLAY GRAPH] Error: {error_message}")
+                tool_message = ToolMessage(
+                    content=error_message,
+                    tool_call_id=tool_call["id"],
+                    name=tool_call["name"]
+                )
+            
+            tool_messages.append(tool_message)
         else:
             # Handle other tools if any
+            logger.info(f"⚠️  [UNKNOWN TOOL] Tool name: {tool_call.get('name', 'unknown')}")
             tool_message = ToolMessage(
                 content=f"Executed tool {tool_call['name']}",
                 tool_call_id=tool_call["id"],
@@ -369,6 +497,7 @@ async def tool_executor_node(state: GraphState) -> Dict[str, Any]:
             )
             tool_messages.append(tool_message)
 
+    logger.info("🔴 [LANGGRAPH NODE] END: tools")
     return {"messages": tool_messages}
 
 
@@ -407,9 +536,9 @@ graph = create_graph()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    print("🚀 Assistant Transport Backend with LangGraph starting up...")
+    logger.debug("🚀 Assistant Transport Backend with LangGraph starting up...")
     yield
-    print("🛑 Assistant Transport Backend with LangGraph shutting down...")
+    logger.debug("🛑 Assistant Transport Backend with LangGraph shutting down...")
 
 
 # Create FastAPI app
@@ -454,7 +583,9 @@ async def chat_endpoint(request: ChatRequest):
                     if part.type == "text" and part.text
                 ]
                 if text_parts:
-                    input_messages.append(HumanMessage(content=" ".join(text_parts)))
+                    user_message_content = " ".join(text_parts)
+                    logger.info(f"👤 [USER INPUT] Message: {user_message_content}")
+                    input_messages.append(HumanMessage(content=user_message_content))
             elif command.type == "add-tool-result":
                 # Handle tool results
                 input_messages.append(ToolMessage(
@@ -468,6 +599,8 @@ async def chat_endpoint(request: ChatRequest):
 
         # Create initial state for LangGraph
         input_state = {"messages": input_messages}
+        
+        logger.info("🟢 [LANGGRAPH] START: Graph execution started")
 
         # Stream with subgraph support
         async for namespace, event_type, chunk in graph.astream(
@@ -489,6 +622,8 @@ async def chat_endpoint(request: ChatRequest):
                 event_type,
                 chunk
             )
+        
+        logger.info("🔴 [LANGGRAPH] END: Graph execution completed")
 
     # Create streaming response using assistant-stream
     stream = create_run(run_callback, state=request.state)
@@ -508,11 +643,24 @@ def main():
     port = int(os.getenv("PORT", "8010"))
     # debug = os.getenv("DEBUG", "false").lower() == "true"
     debug = True
-    log_level = os.getenv("LOG_LEVEL", "info").lower()
+    log_level = os.getenv("LOG_LEVEL", "info").lower()  # Default to info level
+    
+    # Set logging level based on environment variable
+    if log_level == "debug":
+        logging.getLogger().setLevel(logging.DEBUG)
+    elif log_level == "info":
+        logging.getLogger().setLevel(logging.INFO)
+    elif log_level == "warning":
+        logging.getLogger().setLevel(logging.WARNING)
+    elif log_level == "error":
+        logging.getLogger().setLevel(logging.ERROR)
+    else:
+        logging.getLogger().setLevel(logging.INFO)  # Default to INFO
 
-    print(f"🌟 Starting Assistant Transport Backend with LangGraph on {host}:{port}")
-    print(f"🎯 Debug mode: {debug}")
-    print(f"🌍 CORS origins: {cors_origins}")
+    logger.info(f"🌟 Starting Assistant Transport Backend with LangGraph on {host}:{port}")
+    logger.info(f"🎯 Debug mode: {debug}")
+    logger.info(f"🌍 CORS origins: {cors_origins}")
+    logger.info(f"📊 Log level: {logging.getLevelName(logging.getLogger().level)}")
 
     uvicorn.run(
         "main:app",
