@@ -67,51 +67,53 @@ export const DisplayReportUI = makeAssistantToolUI<
         {/* Image Gallery */}
         {totalImages > 0 && (
           <div className="mb-4 w-full bg-white dark:bg-gray-900/50 rounded-lg p-4">
-            <div className="relative">
-              {/* Image Container */}
-              <div className="relative w-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden min-h-[400px]">
+            <div className="relative flex items-center">
+              {/* Left Navigation Button (outside container) */}
+              {hasMultipleImages && (
+                <button
+                  onClick={goToPreviousImage}
+                  className="absolute left-0 top-1/2 -translate-y-1/2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-full p-2 shadow-lg transition-all hover:scale-110 z-10 border border-gray-200 dark:border-gray-700"
+                  aria-label="Previous image"
+                >
+                  <ChevronLeftIcon className="size-5 text-gray-700 dark:text-gray-300" />
+                </button>
+              )}
+              
+              {/* Image Container - Fixed height with margins for buttons */}
+              <div className={`relative ${hasMultipleImages ? 'mx-12' : 'w-full'} h-[500px] flex items-center justify-center bg-white dark:bg-gray-900 rounded-lg overflow-hidden`}>
                 {imageUrl ? (
                   <img
                     src={imageUrl}
                     alt={`Report image ${currentImageIndex + 1} of ${totalImages}`}
-                    className="max-w-full max-h-[600px] object-contain"
+                    className="w-full h-full object-contain"
                   />
                 ) : (
                   <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                     <p>画像を読み込めませんでした</p>
                   </div>
                 )}
-
-                {/* Navigation Arrows */}
-                {hasMultipleImages && (
-                  <>
-                    <button
-                      onClick={goToPreviousImage}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 dark:bg-gray-800/90 hover:bg-white dark:hover:bg-gray-800 rounded-full p-2 shadow-lg transition-all hover:scale-110 z-10"
-                      aria-label="Previous image"
-                    >
-                      <ChevronLeftIcon className="size-5 text-gray-700 dark:text-gray-300" />
-                    </button>
-                    <button
-                      onClick={goToNextImage}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 dark:bg-gray-800/90 hover:bg-white dark:hover:bg-gray-800 rounded-full p-2 shadow-lg transition-all hover:scale-110 z-10"
-                      aria-label="Next image"
-                    >
-                      <ChevronRightIcon className="size-5 text-gray-700 dark:text-gray-300" />
-                    </button>
-                  </>
-                )}
               </div>
-
-              {/* Image Counter */}
+              
+              {/* Right Navigation Button (outside container) */}
               {hasMultipleImages && (
-                <div className="mt-3 text-center">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {currentImageIndex + 1} / {totalImages}
-                  </span>
-                </div>
+                <button
+                  onClick={goToNextImage}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-full p-2 shadow-lg transition-all hover:scale-110 z-10 border border-gray-200 dark:border-gray-700"
+                  aria-label="Next image"
+                >
+                  <ChevronRightIcon className="size-5 text-gray-700 dark:text-gray-300" />
+                </button>
               )}
             </div>
+
+            {/* Image Counter */}
+            {hasMultipleImages && (
+              <div className="mt-3 text-center">
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  {currentImageIndex + 1} / {totalImages}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
