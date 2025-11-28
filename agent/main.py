@@ -10,6 +10,11 @@ from typing import Dict, Any, List, Optional, Union, Sequence, Annotated
 from contextlib import asynccontextmanager
 import uvicorn
 import json
+import base64
+import io
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend
+import matplotlib.pyplot as plt
 
 # Configure logging
 logging.basicConfig(
@@ -249,6 +254,106 @@ def display_graph(plot_type: str) -> str:
         # Default: return empty data for unsupported plot types
         return json.dumps({"error": f"Unsupported plot type: {plot_type}"}, ensure_ascii=False)
 
+@tool
+def display_report() -> str:
+    """
+    Display a report in a user-friendly way.
+    
+    This tool displays a report in a user-friendly way. 
+    Use this tool when the user asks about a report, wants to see a report, or needs to display a report.
+    
+    IMPORTANT: After calling this tool, the report is automatically displayed in the UI component.
+    DO NOT repeat, explain, or output the tool's result in your response.
+    DO NOT format tool results as Markdown images (e.g., ![title](data:image/...)).
+    DO NOT output JSON data, base64 data, or any raw tool result data.
+    Simply acknowledge that the report has been displayed.
+    
+    Returns:
+        JSON string containing images_base64 list with base64-encoded images
+    """
+    images_base64 = []
+    
+    # Bar chart data
+    bar_data = {
+        "labels": ["Q1", "Q2", "Q3", "Q4"],
+        "values": [120, 150, 180, 200],
+        "title": "Quarterly Sales",
+        "xlabel": "Quarter",
+        "ylabel": "Sales (thousands)"
+    }
+    
+    # Line chart data
+    line_data = {
+        "labels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+        "values": [45, 52, 48, 61, 55, 67],
+        "title": "Monthly Revenue Trend",
+        "xlabel": "Month",
+        "ylabel": "Revenue (thousands)"
+    }
+    
+    # Pie chart data
+    pie_data = {
+        "labels": ["Product A", "Product B", "Product C", "Product D"],
+        "values": [30, 25, 20, 25],
+        "title": "Product Sales Distribution"
+    }
+    
+    # Create bar chart
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.bar(bar_data["labels"], bar_data["values"], color='steelblue')
+    ax.set_title(bar_data["title"], fontsize=14, fontweight='bold')
+    ax.set_xlabel(bar_data["xlabel"], fontsize=12)
+    ax.set_ylabel(bar_data["ylabel"], fontsize=12)
+    ax.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    
+    # Convert bar chart to base64
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+    buf.seek(0)
+    bar_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    images_base64.append(bar_base64)
+    plt.close()
+    
+    # Create line chart
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(line_data["labels"], line_data["values"], marker='o', linewidth=2, markersize=8, color='green')
+    ax.set_title(line_data["title"], fontsize=14, fontweight='bold')
+    ax.set_xlabel(line_data["xlabel"], fontsize=12)
+    ax.set_ylabel(line_data["ylabel"], fontsize=12)
+    ax.grid(alpha=0.3)
+    plt.tight_layout()
+    
+    # Convert line chart to base64
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+    buf.seek(0)
+    line_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    images_base64.append(line_base64)
+    plt.close()
+    
+    # Create pie chart
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.pie(pie_data["values"], labels=pie_data["labels"], autopct='%1.1f%%', startangle=90)
+    ax.set_title(pie_data["title"], fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    
+    # Convert pie chart to base64
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+    buf.seek(0)
+    pie_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    images_base64.append(pie_base64)
+    plt.close()
+    
+    # Return JSON with images_base64 list
+    result = {
+        "images_base64": images_base64,
+        "analysis_report": "# Analysis report\n - Bar chart\n - Line chart\n - Pie chart"
+    }
+    return json.dumps(result, ensure_ascii=False) 
+
+
 
 # Subagent node for executing tasks
 async def subagent_node(state: SubagentState) -> Dict[str, Any]:
@@ -322,7 +427,7 @@ async def agent_node(state: GraphState) -> Dict[str, Any]:
     )
 
     # Bind tools to the LLM (both backend and frontend tools)
-    llm_with_tools = llm.bind_tools([task_tool, get_weather, search_products, display_graph])
+    llm_with_tools = llm.bind_tools([task_tool, get_weather, search_products, display_graph, display_report])
 
     # Prepare messages with system message at the beginning (only if not already present)
     messages_list = list(messages)
@@ -480,6 +585,28 @@ async def tool_executor_node(state: GraphState) -> Dict[str, Any]:
                 # Handle errors gracefully
                 error_message = f"Error displaying graph with plot_type {plot_type}: {str(e)}"
                 logger.error(f"❌ [DISPLAY GRAPH] Error: {error_message}")
+                tool_message = ToolMessage(
+                    content=error_message,
+                    tool_call_id=tool_call["id"],
+                    name=tool_call["name"]
+                )
+            
+            tool_messages.append(tool_message)
+        elif tool_call["name"] == "display_report":
+            # Backend tool - execute the display report tool
+            logger.info(f"📊 [DISPLAY REPORT] Generating report with 3 charts")
+            try:
+                report_result = display_report.invoke({})
+                logger.info(f"✅ [DISPLAY REPORT] Successfully generated report")
+                tool_message = ToolMessage(
+                    content=report_result,
+                    tool_call_id=tool_call["id"],
+                    name=tool_call["name"]
+                )
+            except Exception as e:
+                # Handle errors gracefully
+                error_message = f"Error generating report: {str(e)}"
+                logger.error(f"❌ [DISPLAY REPORT] Error: {error_message}")
                 tool_message = ToolMessage(
                     content=error_message,
                     tool_call_id=tool_call["id"],
