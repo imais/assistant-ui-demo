@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@assistant-ui/react": "^0.11.41",
+    "@assistant-ui/react-devtools": "^0.1.9",
     "@assistant-ui/react-langgraph": "^0.7.8",
     "@assistant-ui/react-markdown": "^0.11.5",
     "@radix-ui/react-slot": "^1.2.4",
